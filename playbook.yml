@@ -1,0 +1,64 @@
+---
+- name: Create a custom ESXi image with a kickstart file
+  hosts: localhost
+  gather_facts: false
+  vars:
+    rootpw:
+      password: Passw@rd
+      crypted: false
+    network:
+      device: vmnic0
+      ip: 10.0.10.11
+      netmask: 255.255.254.0
+      gateway: 10.0.10.1
+      hostname: v10-nesxi-01.lab.local
+      vlanid: 10 #　If not using VLAN, set it to 0.
+      nameserver: "10.0.10.1" # To use multiple DNS servers, separate them with commas. ex.) "10.0.10.1,10.0.10.2"
+    path:
+      esxi_image: VMware-VMvisor-Installer-8.0U1-21495797.x86_64.iso
+      tmp_dir: /tmp/extract
+      output_image: custom_esxi.iso
+    efi: true
+    bios: true
+  
+  tasks:
+    - name: Extract the image # To avoid using 'privileged' in Docker, use 7z instead of 'mount -o loop'.
+      shell: "7z x {{ path.esxi_image }} -o{{ path.tmp_dir }}"
+    
+    - name: Modify BOOT.CFG when efi is true
+      lineinfile:
+        path: "{{ path.tmp_dir }}/EFI/BOOT/BOOT.CFG"
+        regexp: "^kernelopt=runweasel cdromBoot"
+        line: "kernelopt=runweasel cdromBoot ks=cdrom:/KS.CFG"
+      when: efi
+
+    - name: Modify BOOT.CFG when bios is true
+      lineinfile:
+        path: "{{ path.tmp_dir }}/BOOT.CFG"
+        regexp: "^kernelopt=runweasel cdromBoot"
+        line: "kernelopt=runweasel cdromBoot ks=cdrom:/KS.CFG"
+      when: bios
+
+    # https://docs.vmware.com/jp/VMware-vSphere/8.0/vsphere-esxi-upgrade/GUID-341A83E4-2A6C-4FB9-BE30-F1E19D12947F.html
+    - name: Generate KS.CFG from template.
+      template:
+        src: KS.CFG.j2 
+        dest: "{{ path.tmp_dir }}/KS.CFG"
+  
+    # https://docs.vmware.com/jp/VMware-vSphere/8.0/vsphere-esxi-upgrade/GUID-4E57A4D7-259D-4FA9-AA26-E0C71487A376.html
+    - name: Generate a custom ESXi image.
+      shell: >
+        genisoimage \
+          -relaxed-filenames \
+          -J -R \
+          -o {{ path.output_image }} \
+          -b ISOLINUX.BIN \
+          -c BOOT.CAT \
+          -no-emul-boot \
+          -boot-load-size 4 \
+          -boot-info-table \
+          -eltorito-alt-boot \
+          -e EFIBOOT.IMG \
+          -no-emul-boot {{ path.tmp_dir }}
+      args:
+        executable: /bin/bash
