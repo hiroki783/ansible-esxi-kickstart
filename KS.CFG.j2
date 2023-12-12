@@ -1,0 +1,33 @@
+# Source: https://docs.vmware.com/jp/VMware-vSphere/7.0/com.vmware.esxi.install.doc/GUID-C3F32E0F-297B-4B75-8B3E-C28BD08680C8.html
+#
+# Sample scripted installation file
+#
+
+# Accept the VMware End User License Agreement
+vmaccepteula
+
+# Set the root password for the DCUI and Tech Support Mode
+{% if rootpw.crypted %}
+rootpw --iscrypted {{ rootpw.password }}
+{% else %}
+rootpw {{ rootpw.password }}
+{% endif %}
+
+# Install on the first local disk available on machine
+install --firstdisk --overwritevmfs
+
+{% if network.vlanid == 0 %}
+network --bootproto=static --device={{ network.device }} --ip={{ network.ip }} --netmask={{ network.netmask }} --gateway={{ network.gateway }} --nameserver={{ network.nameserver }} --hostname={{ network.hostname }}
+{% else %}
+network --bootproto=static --device={{ network.device }} --ip={{ network.ip }} --netmask={{ network.netmask }} --gateway={{ network.gateway }} --nameserver={{ network.nameserver }} --hostname={{ network.hostname }} --vlanid={{ network.vlanid }}
+{% endif %}
+
+keyboard Japanese
+
+reboot
+
+# A sample post-install script
+%post --interpreter=python --ignorefailure=true
+import time
+stampFile = open('/finished.stamp', mode='w')
+stampFile.write( time.asctime() )
